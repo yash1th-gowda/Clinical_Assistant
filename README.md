@@ -194,6 +194,19 @@ Ensure the same env vars are available to this process (e.g., run from `backend/
 - **Medication logs**: generated automatically per schedule window; patients/doctors update statuses; pending views available.
 - **Reports**: PDFs downloadable from the UI using prebuilt endpoints.
 
+Workflow
+                User
+                  │
+          Next.js Frontend
+                  │
+        REST API (HTTP)
+                  │
+        Node.js + Express
+          │             │
+          │             │
+      MongoDB      Flask ML Service
+                        │
+                 ADR Prediction Model
 ---
 
 ## Troubleshooting
