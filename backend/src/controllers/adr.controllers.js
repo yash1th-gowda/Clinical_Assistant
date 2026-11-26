@@ -1,89 +1,135 @@
+import mongoose from "mongoose";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ADRDetectionService } from "../services/adrDetectionService.js";
 import { NotificationService } from "../services/notificationService.js";
 import { ADRAlert } from "../models/adrAlerts.models.js";
+import { Patient } from "../models/patient.models.js";
+import { Doctor } from "../models/doctor.models.js";
+
+const ALERT_STATUSES = ["pending", "reviewed", "resolved", "dismissed"];
+const MAX_PAGE_SIZE = 100;
+
+const assertValidObjectId = (value, label) => {
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    throw new ApiError(400, `Valid ${label} is required`);
+  }
+};
+
+// Support either side of the existing patient-doctor relationship fields.
+const assertDoctorOwnsPatient = async (doctorId, patientId) => {
+  const [patient, doctor] = await Promise.all([
+    Patient.findById(patientId).select("_id doctorId"),
+    Doctor.findById(doctorId).select("patients"),
+  ]);
+
+  if (!patient) throw new ApiError(404, "Patient not found");
+
+  const assignedByPatient = patient.doctorId?.toString() === doctorId.toString();
+  const assignedByDoctor = doctor?.patients?.some(
+    (id) => id.toString() === patientId.toString()
+  );
+
+  if (!assignedByPatient && !assignedByDoctor) {
+    throw new ApiError(403, "You are not assigned to this patient");
+  }
+};
+
+const validateMedications = (medications) => {
+  if (
+    !Array.isArray(medications) ||
+    medications.length === 0 ||
+    medications.some(
+      (medication) =>
+        !medication ||
+        typeof medication.name !== "string" ||
+        !medication.name.trim()
+    )
+  ) {
+    throw new ApiError(400, "A non-empty medications array with a name for each item is required");
+  }
+};
 
 /**
- * Check ADR for a specific patient
+ * Check ADR for a patient assigned to the authenticated doctor.
  */
 export const checkPatientADR = asyncHandler(async (req, res) => {
   const { patientId } = req.params;
-  const { medications } = req.body; // Optional: new medications to check
+  const { medications = [] } = req.body;
 
-  if (!patientId) {
-    throw new ApiError(400, "Patient ID is required");
+  assertValidObjectId(patientId, "patient ID");
+  if (!Array.isArray(medications)) {
+    throw new ApiError(400, "Medications must be an array");
+  }
+  if (medications.length > 100) {
+    throw new ApiError(400, "A maximum of 100 medications can be checked at once");
+  }
+  if (medications.some((medication) => !medication || typeof medication.name !== "string" || !medication.name.trim())) {
+    throw new ApiError(400, "Each medication must include a name");
   }
 
-  try {
-    const adrResults = await ADRDetectionService.detectADR(
-      patientId,
-      medications || []
-    );
+  await assertDoctorOwnsPatient(req.user._id, patientId);
+  const adrResults = await ADRDetectionService.detectADR(patientId, medications);
 
-    res
-      .status(200)
-      .json(
-        new ApiResponse(200, adrResults, "ADR analysis completed successfully")
-      );
-  } catch (error) {
-    throw new ApiError(500, `ADR detection failed: ${error.message}`);
-  }
+  res.status(200).json(
+    new ApiResponse(200, adrResults, "ADR analysis completed successfully")
+  );
 });
 
 /**
- * Check ADR for new prescription
+ * Check a proposed prescription before it is issued.
  */
 export const checkPrescriptionADR = asyncHandler(async (req, res) => {
   const { patientId, medications } = req.body;
   const doctorId = req.user._id;
 
-  if (!patientId || !medications || medications.length === 0) {
-    throw new ApiError(400, "Patient ID and medications are required");
+  assertValidObjectId(patientId, "patient ID");
+  validateMedications(medications);
+  if (medications.length > 100) {
+    throw new ApiError(400, "A maximum of 100 medications can be checked at once");
   }
 
-  try {
-    const adrResults = await ADRDetectionService.detectADR(
-      patientId,
-      medications
-    );
+  await assertDoctorOwnsPatient(doctorId, patientId);
+  const adrResults = await ADRDetectionService.detectADR(patientId, medications);
 
-    // If high risk, create alert and send notifications
-    if (adrResults.riskLevel === "high") {
-      await createADRAlert(patientId, doctorId, adrResults);
-      await sendADRNotifications(patientId, doctorId, adrResults);
-    }
-
-    res
-      .status(200)
-      .json(
-        new ApiResponse(200, adrResults, "Prescription ADR analysis completed")
-      );
-  } catch (error) {
-    throw new ApiError(500, `Prescription ADR check failed: ${error.message}`);
+  if (adrResults.riskLevel === "high") {
+    await createADRAlert(patientId, doctorId, adrResults);
+    await sendADRNotifications(patientId, doctorId, adrResults);
   }
+
+  res.status(200).json(
+    new ApiResponse(200, adrResults, "Prescription ADR analysis completed")
+  );
 });
 
 /**
- * Get ADR alerts for a doctor
+ * Get paginated ADR alerts belonging to the authenticated doctor.
  */
 export const getDoctorADRAlerts = asyncHandler(async (req, res) => {
-  const doctorId = req.user._id;
-  const { status, limit = 20, page = 1 } = req.query;
+  const { status } = req.query;
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const requestedLimit = Number.parseInt(req.query.limit, 10) || 20;
 
-  const query = { doctorId };
-  if (status) {
-    query.status = status;
+  if (status && !ALERT_STATUSES.includes(status)) {
+    throw new ApiError(400, "Invalid alert status");
+  }
+  if (page < 1 || requestedLimit < 1) {
+    throw new ApiError(400, "Page and limit must be positive integers");
   }
 
-  const alerts = await ADRAlert.find(query)
-    .populate("patientId", "fullname email phone")
-    .sort({ createdAt: -1 })
-    .limit(limit * 1)
-    .skip((page - 1) * limit);
+  const limit = Math.min(requestedLimit, MAX_PAGE_SIZE);
+  const query = { doctorId: req.user._id };
+  if (status) query.status = status;
 
-  const total = await ADRAlert.countDocuments(query);
+  const [alerts, total] = await Promise.all([
+    ADRAlert.find(query)
+      .populate("patientId", "fullname email phone")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip((page - 1) * limit),
+    ADRAlert.countDocuments(query),
+  ]);
 
   res.status(200).json(
     new ApiResponse(
@@ -91,7 +137,8 @@ export const getDoctorADRAlerts = asyncHandler(async (req, res) => {
       {
         alerts,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: page,
+          pageSize: limit,
           totalPages: Math.ceil(total / limit),
           totalAlerts: total,
         },
@@ -102,47 +149,47 @@ export const getDoctorADRAlerts = asyncHandler(async (req, res) => {
 });
 
 /**
- * Update ADR alert status
+ * Update an alert only when it belongs to the authenticated doctor.
  */
 export const updateADRAlertStatus = asyncHandler(async (req, res) => {
   const { alertId } = req.params;
   const { status, notes } = req.body;
   const doctorId = req.user._id;
 
-  if (!alertId) {
-    throw new ApiError(400, "Alert ID is required");
+  assertValidObjectId(alertId, "alert ID");
+  if (status !== undefined && !ALERT_STATUSES.includes(status)) {
+    throw new ApiError(400, "Invalid alert status");
+  }
+  if (notes !== undefined && (typeof notes !== "string" || notes.length > 2000)) {
+    throw new ApiError(400, "Notes must be text no longer than 2000 characters");
+  }
+  if (status === undefined && notes === undefined) {
+    throw new ApiError(400, "Provide a status or notes value to update");
   }
 
-  const alert = await ADRAlert.findById(alertId);
+  const alert = await ADRAlert.findOne({ _id: alertId, doctorId });
   if (!alert) {
     throw new ApiError(404, "ADR alert not found");
   }
 
-  if (alert.doctorId.toString() !== doctorId.toString()) {
-    throw new ApiError(403, "Not authorized to update this alert");
-  }
-
-  alert.status = status || alert.status;
-  alert.doctorNotes = notes || alert.doctorNotes;
-  alert.updatedAt = new Date();
-
+  if (status !== undefined) alert.status = status;
+  if (notes !== undefined) alert.doctorNotes = notes;
   await alert.save();
 
-  res
-    .status(200)
-    .json(new ApiResponse(200, alert, "ADR alert updated successfully"));
+  res.status(200).json(
+    new ApiResponse(200, alert, "ADR alert updated successfully")
+  );
 });
 
 /**
- * Get ADR statistics for dashboard
+ * Get aggregate ADR statistics for the authenticated doctor.
  */
 export const getADRStatistics = asyncHandler(async (req, res) => {
-  const doctorId = req.user._id;
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const stats = await ADRAlert.aggregate([
-    { $match: { doctorId: doctorId } },
+    { $match: { doctorId: req.user._id } },
     {
       $group: {
         _id: null,
@@ -173,25 +220,19 @@ export const getADRStatistics = asyncHandler(async (req, res) => {
     recentAlerts: 0,
   };
 
-  res
-    .status(200)
-    .json(
-      new ApiResponse(200, result, "ADR statistics retrieved successfully")
-    );
+  res.status(200).json(
+    new ApiResponse(200, result, "ADR statistics retrieved successfully")
+  );
 });
 
-// Helper functions
 async function createADRAlert(patientId, doctorId, adrResults) {
-  const alert = new ADRAlert({
+  return ADRAlert.create({
     patientId,
     doctorId,
     riskLevel: adrResults.riskLevel,
     adrData: adrResults,
     status: "pending",
-    createdAt: new Date(),
   });
-
-  return await alert.save();
 }
 
 async function sendADRNotifications(patientId, doctorId, adrResults) {
@@ -201,9 +242,7 @@ async function sendADRNotifications(patientId, doctorId, adrResults) {
       ADRDetectionService.getPatientInfo(patientId),
     ]);
 
-    if (!doctor || !patient) {
-      throw new Error("Doctor or patient not found");
-    }
+    if (!doctor || !patient) return;
 
     const notificationData = {
       doctor,
@@ -212,13 +251,13 @@ async function sendADRNotifications(patientId, doctorId, adrResults) {
       timestamp: new Date(),
     };
 
-    // Send notifications via multiple channels
     await Promise.allSettled([
       NotificationService.sendEmailAlert(notificationData),
       NotificationService.sendSMSAlert(notificationData),
       NotificationService.sendWhatsAppAlert(notificationData),
     ]);
   } catch (error) {
-    console.error("Failed to send ADR notifications:", error);
+    // Notification delivery must not expose provider details to API clients.
+    console.error("ADR notification delivery failed:", error.message);
   }
 }
