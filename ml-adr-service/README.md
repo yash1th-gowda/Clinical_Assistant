@@ -1,65 +1,72 @@
-# ML ADR Detection Service
+# Experimental ADR Prediction Service
 
-Machine Learning-based Adverse Drug Reaction detection service for Clinical Assistant.
+A small Flask prototype that demonstrates drug-pair interaction classification and simple allergy matching.
 
-## Features
-- **Drug Interaction Detection** using Random Forest classifier
-- **Allergy Cross-checking** against patient allergies
-- **Age-based Risk Assessment** for elderly patients
-- **Confidence Scoring** for predictions
-- **Fallback Support** when ML service is unavailable
+> **Clinical safety warning:** This service is not clinically validated and must not be used to prescribe, discontinue, or modify medication. Its bundled Random Forest model is trained on a tiny synthetic dataset. Predictions and confidence values are demonstrations, not medical evidence.
 
-## Setup
+## What is implemented
 
-1. **Install Dependencies**:
+- Flask `GET /health` endpoint
+- Flask `POST /predict-adr` endpoint
+- Drug-pair classification using a Random Forest model
+- Basic string and drug-class allergy matching
+- Request validation and a 1 MB request-size limit
+- Optional browser CORS allowlist through `ADR_ALLOWED_ORIGINS`
+
+Age-based risk scoring and production-grade clinical validation are not implemented.
+
+## Run locally
+
+Requires Python 3.9+.
+
 ```bash
-./start.sh
-```
+python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# macOS/Linux:
+source .venv/bin/activate
 
-2. **Manual Setup**:
-```bash
-python3 -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
 
-## API Endpoints
+The service listens on port 6001 by default. Set `PORT` to override it. Debug mode is disabled by default; set `FLASK_DEBUG=true` only for local development.
 
-### Health Check
-```
+## API
+
+### Health
+
+```http
 GET /health
 ```
 
-### Predict ADR
-```
+### Predict
+
+```http
 POST /predict-adr
+Content-Type: application/json
+```
+
+Example request:
+
+```json
 {
   "medications": [
-    {"name": "warfarin", "dosage": "5mg"},
-    {"name": "aspirin", "dosage": "100mg"}
+    { "name": "warfarin" },
+    { "name": "aspirin" }
   ],
   "patient": {
-    "age": 70,
-    "allergies": ["penicillin"],
-    "chronicConditions": ["hypertension"]
+    "allergies": ["penicillin"]
   }
 }
 ```
 
-## Integration
+The response contains the prototype's detected interactions. Input is limited to 100 medication entries and a 1 MB request body.
 
-The service runs on `http://localhost:5001` and integrates with:
-- **Backend**: Prescription creation and patient details
-- **Frontend**: Real-time ADR alerts display
+## CORS
 
-## Model Training
+CORS is disabled unless `ADR_ALLOWED_ORIGINS` is set to a comma-separated allowlist of trusted origins. CORS is not authentication; do not expose this prototype publicly without a separate authentication and network-access design.
 
-The service automatically trains a Random Forest model with synthetic drug interaction data on first startup. The model is saved as `adr_model.pkl` and `vectorizer.pkl`.
+## Model limitations
 
-## Security
-
-- No external API calls
-- Local processing only
-- Input validation and sanitization
-- Timeout protection (5 seconds)
+The included model is trained on a very small hand-authored synthetic dataset. It is not representative of real-world medication use, clinical populations, dosage, timing, comorbidities, or evidence-based interaction databases. Do not interpret its class labels or confidence scores as calibrated clinical risk.
