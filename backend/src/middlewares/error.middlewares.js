@@ -3,21 +3,36 @@ import { ApiError } from "../utils/ApiError.js";
 
 const errorHandler = (err, req, res, next) => {
   let error = err;
+
   if (!(err instanceof ApiError)) {
     const statusCode =
-      error.statusCode || error instanceof mongoose.Error ? 400 : 500;
+      err.statusCode || (err instanceof mongoose.Error ? 400 : 500);
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const message =
+      statusCode >= 500 && !isDevelopment
+        ? "Internal server error"
+        : err.message || "Something went wrong";
 
-    const message = error.message || "Something went wrong";
-
-    error = new ApiError(statusCode, message, error?.errors || [], error.stack);
+    error = new ApiError(
+      statusCode,
+      message,
+      statusCode >= 500 ? [] : err.errors || [],
+      isDevelopment ? err.stack : ""
+    );
   }
 
   const response = {
-    ...error,
+    success: false,
+    statusCode: error.statusCode,
     message: error.message,
-    ...(process.env.NODE_ENV === "development" ? { stack: error.stack } : {}),
+    errors: error.errors,
   };
-  res.status(error.statusCode).json(response);
+
+  if (process.env.NODE_ENV === "development") {
+    response.stack = error.stack;
+  }
+
+  res.status(error.statusCode || 500).json(response);
 };
 
 export { errorHandler };
