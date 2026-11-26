@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { verifyJwt } from "../middlewares/auth.middleware.js";
+import { verifyJwt, requireDoctor } from "../middlewares/auth.middleware.js";
 import {
   checkPatientADR,
   checkPrescriptionADR,
@@ -10,18 +10,13 @@ import {
 
 const router = Router();
 
-// All routes require authentication
-router.use(verifyJwt);
+// ADR analysis and alert management are doctor-only operations.
+router.use(verifyJwt, requireDoctor);
 
-// ADR Detection Routes
 router.post("/check/patient/:patientId", checkPatientADR);
 router.post("/check/prescription", checkPrescriptionADR);
-
-// ADR Alerts Management
 router.get("/alerts", getDoctorADRAlerts);
-router.put("/alerts/:alertId/status", updateADRAlertStatus);
-
-// ADR Statistics
+router.patch("/alerts/:alertId/status", updateADRAlertStatus);
 router.get("/statistics", getADRStatistics);
 
 export default router;
