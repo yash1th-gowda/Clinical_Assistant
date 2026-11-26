@@ -16,7 +16,8 @@ router.use(verifyJwt, requireDoctor);
 router.post("/check/patient/:patientId", checkPatientADR);
 router.post("/check/prescription", checkPrescriptionADR);
 router.get("/alerts", getDoctorADRAlerts);
-router.patch("/alerts/:alertId/status", updateADRAlertStatus);
+// Keep PUT for compatibility with clients using the original endpoint.
+router.put("/alerts/:alertId/status", updateADRAlertStatus);
 router.get("/statistics", getADRStatistics);
 
 export default router;
