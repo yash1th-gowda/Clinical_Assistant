@@ -1,220 +1,180 @@
-# Smart Care Assistant (Monorepo)
+# Smart Care Assistant
 
-A full‑stack healthcare assistant with role‑based portals for Admin, Doctor, and Patient. It provides patient onboarding, appointments, prescriptions, vitals tracking, medication logs with scheduled generation, and downloadable PDF reports.
+A full-stack healthcare workflow project with separate Admin, Doctor, and Patient portals. The application supports patient records, appointments, prescriptions, vitals, medication logs, notifications, PDF reports, and an experimental adverse drug reaction (ADR) analysis module.
 
-## Monorepo Structure
+> **Important:** This is an educational software project, not a certified medical device or clinical decision-support system. ADR rules and the bundled ML model are simplified demonstrations and may be incomplete or inaccurate. Do not use their output to diagnose, prescribe, change medication, or make patient-care decisions. A qualified clinician must independently review all medical decisions.
 
-- `backend/`: Node.js + Express + MongoDB API
-- `frontend/`: Next.js app (React)
+## Repository layout
 
-## Tech Stack
+- `backend/` — Node.js, Express 5, MongoDB/Mongoose API
+- `frontend/` — Next.js 15 / React 19 web application
+- `ml-adr-service/` — experimental Flask ADR prediction service using a small synthetic training dataset
+- `docker-compose.yml` — local container orchestration for the backend, MongoDB, and ML service
 
-- **Backend**: Node.js, Express, Mongoose, JWT, Cloudinary, Multer, node-cron, PDFKit
-- **Frontend**: Next.js 15, React 19, Axios, React Hook Form, Tailwind CSS
-- **Database**: MongoDB
+## Main capabilities
 
-## Key Features
+- Role-specific Admin, Doctor, and Patient interfaces
+- Patient onboarding and profile management
+- Appointment request and status workflows
+- Prescription management and medication schedules
+- Patient vitals and symptom records
+- Scheduled medication logs and reminders
+- PDF reports
+- Experimental rule-based ADR checks and alert tracking
 
-- **Role-based auth**: Admin, Doctor, Patient
-- **Appointments**: book/approve/start/complete/cancel workflows
-- **Prescriptions**: create/update, latest prescription lookups
-- **Vitals**: capture and fetch latest/all vitals
-- **Medication logs**: automatic creation per schedule windows (cron), status updates, pending logs view
-- **Reports**: server-generated PDFs available for doctor and patient
+Some integrations (email, SMS, WhatsApp, Cloudinary) require provider credentials and configuration. The ML service is a separate prototype; do not assume it is a validated or authoritative medical model.
 
----
+## Technology
 
-## Getting Started (Local)
+| Layer | Technologies |
+|---|---|
+| Frontend | Next.js 15, React 19, Axios, Tailwind CSS |
+| Backend | Node.js 20+, Express 5, Mongoose, JWT |
+| Database | MongoDB |
+| ML prototype | Python, Flask, scikit-learn |
+| Integrations | Cloudinary, Nodemailer, Twilio, WhatsApp Business API |
+| Containers | Docker, Docker Compose |
 
-### 1) Prerequisites
+## Run locally
 
-- Node.js 18+ and npm
-- MongoDB running locally or a cloud URI
+### Prerequisites
 
-### 2) Clone and install
+- Node.js 20 or later and npm
+- MongoDB (local instance or hosted MongoDB URI)
+- Python 3.9+ only if running the ML prototype outside Docker
+
+### 1. Clone and install
 
 ```bash
-# from repo root
-cd backend && npm install
-cd ../frontend && npm install
+git clone https://github.com/yash1th-gowda/Clinical_Assistant.git
+cd Clinical_Assistant
+
+cd backend
+npm ci
+cd ../frontend
+npm ci
+cd ..
 ```
 
-### 3) Environment variables
+### 2. Configure the backend
 
-Create `backend/.env` (the backend loads `../.env` from `src/index.js`, which resolves to `backend/.env`).
+Copy `backend/.env.example` to `backend/.env` and set the values required by the features you want to run.
 
-```env
-# Backend
-PORT=5002
-MONGODB_URI=mongodb://localhost:27017/smart-care-assistant
-CORS_ORIGIN=http://localhost:3001
-JWT_SECRET=change_me
+At minimum, configure:
 
-# Cloudinary (used for profile images, etc.)
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
-```
+- `PORT` (default: `5002`)
+- `MONGODB_URI`
+- `ACCESS_TOKEN_SECRET`
+- `REFRESH_TOKEN_SECRET`
+- `ACCESS_TOKEN_EXPIRY`
+- `REFRESH_TOKEN_EXPIRY`
+- `JWT_SECRET` (used by medication reminder action links)
+- `CORS_ORIGIN`
+
+Generate independent, high-entropy values for the token secrets. Never commit `.env` files, API keys, cookies, or production credentials.
+
+### 3. Configure the frontend
 
 Create `frontend/.env.local`:
 
 ```env
-# Frontend
 NEXT_PUBLIC_API_URL=http://localhost:5002/api
 ```
 
-Notes:
+The backend's default CORS origin is `http://localhost:3001`, so run the frontend on port 3001 unless you change `CORS_ORIGIN`.
 
-- The backend CORS default is `http://localhost:3001`. You can either:
-  - run Next dev on port 3001, or
-  - change `CORS_ORIGIN` to `http://localhost:3000` if you prefer port 3000.
-
-### 4) Run the apps
-
-- Backend (from `backend/`):
+### 4. Start the backend
 
 ```bash
-npm run dev
-# or: npm start
-```
-
-- Frontend (from `frontend/`):
-
-```bash
-# Option A: run on 3001 to match default CORS_ORIGIN
-PORT=3001 npm run dev
-
-# Option B: run on 3000 and change backend CORS_ORIGIN accordingly
+cd backend
 npm run dev
 ```
 
-Open the frontend at the chosen port: `http://localhost:3001` (or `3000`).
+### 5. Start the frontend
 
-### 5) (Optional) Create an Admin user
-
-From `backend/`:
+In another terminal:
 
 ```bash
+cd frontend
+npm run dev -- --port 3001
+```
+
+Open http://localhost:3001.
+
+### Optional backend tasks
+
+Create an initial administrator account (requires the setup values expected by the script):
+
+```bash
+cd backend
 npm run create-admin
 ```
 
-This runs `src/scripts/createAdmin.js` to seed an initial admin.
-
-### 6) (Optional) Start the medication log cron worker
-
-The scheduled job creates pending medication logs for the current time window.
-
-From `backend/`:
+Run the medication-log scheduler as a separate process:
 
 ```bash
-node src/cron/medicationLogs.js
+cd backend
+npm run medication-logs
 ```
 
-Ensure the same env vars are available to this process (e.g., run from `backend/` so it can read `backend/.env`).
+Do not run multiple scheduler instances against the same environment unless duplicate processing has been addressed.
 
----
+## Docker Compose
 
-## Backend
+For a local containerized backend and database:
 
-### Scripts
+1. Copy the root `.env.example` to `.env`.
+2. Replace both required token secrets with independently generated values.
+3. Run:
 
-- `npm run dev`: start API with nodemon at `PORT` (default 5002)
-- `npm start`: start API with node
-- `npm run create-admin`: seed an initial admin account
+```bash
+docker compose up --build
+```
 
-### API Base URL
+The backend is published on `127.0.0.1:5001`. MongoDB is not published to the host; it is reachable only by services on the Compose network. The ML service is also internal to that network.
 
-- Local default: `http://localhost:5002/api`
+To stop:
 
-### Notable Routes (high-level)
+```bash
+docker compose down
+```
 
-- `POST /api/auth/*`
-- `GET/PUT /api/patients/*`
-- `GET/PUT /api/doctors/*`
-- `GET/PUT /api/appointments/*` and state endpoints
-  - `PUT /api/appointments/:id/approve`
-  - `PUT /api/appointments/:id/start`
-  - `PUT /api/appointments/:id/complete`
-  - `PUT /api/appointments/:id/cancel`
-- `GET/POST/PUT /api/prescriptions/*`
-- `GET/POST /api/vitals/*`
-- `GET/POST/PUT /api/medicationLogs/*`
+To remove the local database volume as well (this permanently deletes the Compose database data):
 
-### PDF Endpoints (served to frontend helpers)
+```bash
+docker compose down -v
+```
 
-- `GET /api/doctors/reports/summary.pdf`
-- `GET /api/doctors/patients/:patientId/report.pdf`
-- `GET /api/patients/reports/my.pdf`
+## API overview
 
-### Scheduled Medication Logs
+The Express API is mounted under `/api`. Main route groups include:
 
-- Time windows (from `src/services/medicationLogScheduler.js`):
-  - morning: 06:00–10:00
-  - afternoon: 12:00–15:00
-  - evening: 17:00–20:00
-  - night: 21:00–23:00
-- Cron runner (`src/cron/medicationLogs.js`) executes hourly at minute 0.
+- `/auth`
+- `/patients`
+- `/doctors`
+- `/admin`
+- `/appointments`
+- `/prescriptions`
+- `/vitals`
+- `/medicationLogs`
+- `/symptoms`
+- `/notifications`
+- `/summaries`
+- `/adr`
 
-### Database
+ADR analysis and alert endpoints are restricted to authenticated doctors. A doctor must be assigned to the patient before requesting an ADR check.
 
-- Configured in `src/db/index.js` via `MONGODB_URI`.
+## Security notes
 
----
+- Use unique secrets for access tokens, refresh tokens, and medication reminder links.
+- Keep `.env`, cookies, API keys, database exports, and patient data out of Git.
+- Use HTTPS and appropriately secured managed database services for any hosted environment.
+- Configure provider credentials only in the hosting platform's secret manager.
+- Review `SECURITY.md` before deploying or contributing.
 
-## Frontend
+## Project status and limitations
 
-### Scripts
-
-- `npm run dev`: start Next dev server (default 3000)
-- `npm run build`: production build
-- `npm start`: start production server
-
-### Env
-
-- `NEXT_PUBLIC_API_URL`: points to backend API base (e.g., `http://localhost:5002/api`)
-
-### Auth & API Client
-
-- Axios instance (`src/utils/api.js`) attaches `Authorization: Bearer <token>` if present and valid.
-- On token expiry, it clears local state and redirects to `/`.
-
-### UI Apps
-
-- `src/app/patient/*`: patient portal
-- `src/app/doctor/*`: doctor portal
-- `src/app/admin/*`: admin portal
-
----
-
-## Common Workflows
-
-- **Appointments**: patients create requests → doctors approve/start/complete/cancel via dedicated endpoints.
-- **Prescriptions**: doctors manage prescriptions; patients and doctors fetch by patient or latest.
-- **Vitals**: patients add vitals; latest/all views available.
-- **Medication logs**: generated automatically per schedule window; patients/doctors update statuses; pending views available.
-- **Reports**: PDFs downloadable from the UI using prebuilt endpoints.
-
-Workflow
-                User
-                  │
-          Next.js Frontend
-                  │
-        REST API (HTTP)
-                  │
-        Node.js + Express
-          │             │
-          │             │
-      MongoDB      Flask ML Service
-                        │
-                 ADR Prediction Model
----
-
-## Troubleshooting
-
-- CORS errors: ensure frontend origin matches `CORS_ORIGIN` or adjust one of them.
-- 401/403 issues: verify JWT issuance and `NEXT_PUBLIC_API_URL` pointing to the correct backend.
-- Mongo connection failures: confirm `MONGODB_URI` and that MongoDB is reachable.
-- Cron not creating logs: check that the worker process is running and its env matches the main API env.
+This repository is a student/portfolio project. It has not been independently security-audited, clinically validated, or verified for production healthcare use. The ADR detection logic uses a small hand-maintained rule set; the Flask model is trained on a tiny synthetic dataset and must not be interpreted as reliable clinical prediction. Authentication and authorization coverage elsewhere in the application should be reviewed before any deployment containing real patient information.
 
 ## License
 
