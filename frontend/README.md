@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Smart Care Assistant — Frontend
 
-## Getting Started
+The web client for Smart Care Assistant, built with Next.js 15 and React 19.
 
-First, run the development server:
+## Requirements
+
+- Node.js 20+
+- npm
+- A running Smart Care Assistant backend
+
+## Setup
+
+Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create `.env.local` in this directory:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5002/api
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Start the development server on port 3001 (the backend's default CORS origin):
 
-## Learn More
+```bash
+npm run dev -- --port 3001
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open http://localhost:3001.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Available scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run dev` — development server
+- `npm run build` — production build
+- `npm start` — production server (run after building)
+- `npm run lint` — ESLint
 
-## Deploy on Vercel
+## Application areas
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `src/app/admin/` — administrator portal
+- `src/app/doctor/` — doctor portal
+- `src/app/patient/` — patient portal
+- `src/components/` — shared UI components
+- `src/context/` — application context
+- `src/utils/` — API, authentication, and route helpers
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The application requires the backend API and its configured services. See the repository-root README for full-stack setup and the medical-use disclaimer.

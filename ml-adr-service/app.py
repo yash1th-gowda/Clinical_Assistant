@@ -7,7 +7,16 @@ import pickle
 import os
 
 app = Flask(__name__)
-CORS(app)
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
+
+# Browser access is disabled unless explicit trusted origins are configured.
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("ADR_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if allowed_origins:
+    CORS(app, origins=allowed_origins)
 
 # Drug class mapping - maps specific drugs to their classes
 DRUG_CLASSES = {
@@ -213,29 +222,43 @@ def health_check():
 
 @app.route('/predict-adr', methods=['POST'])
 def predict_adr():
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "A JSON object is required"}), 400
+
+    medications = data.get('medications', [])
+    patient_data = data.get('patient', {})
+    if not isinstance(medications, list) or len(medications) > 100:
+        return jsonify({"error": "medications must be a list of at most 100 items"}), 400
+    if not isinstance(patient_data, dict):
+        return jsonify({"error": "patient must be a JSON object"}), 400
+    if any(
+        not isinstance(medication, dict)
+        or not isinstance(medication.get('name'), str)
+        or not medication.get('name').strip()
+        for medication in medications
+    ):
+        return jsonify({"error": "Each medication must include a non-empty name"}), 400
+    if not isinstance(patient_data.get('allergies', []), list):
+        return jsonify({"error": "patient.allergies must be a list"}), 400
+
     try:
-        data = request.get_json()
-        medications = data.get('medications', [])
-        patient_data = data.get('patient', {})
-        
-        print(f"Checking ADR for medications: {[m.get('name') for m in medications]}")
-        print(f"Patient allergies: {patient_data.get('allergies', [])}")
-        
         interactions = predictor.check_multiple_drugs(medications, patient_data)
-        
-        print(f"Found {len(interactions)} interactions")
-        for interaction in interactions:
-            print(f"  - {interaction['type']}: {interaction['message']}")
-        
         return jsonify({
             "success": True,
             "interactions": interactions,
             "total_interactions": len(interactions)
         })
-    
-    except Exception as e:
-        print(f"Error in predict_adr: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        app.logger.exception("ADR prediction request failed")
+        return jsonify({"error": "ADR prediction failed"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=6001, debug=True)
+    app.run(
+        host='0.0.0.0',
+        port=int(os.environ.get('PORT', '6001')),
+        debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    )
