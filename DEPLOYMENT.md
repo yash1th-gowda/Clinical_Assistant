@@ -1,163 +1,73 @@
-# Deployment Guide for Smart Care Assistant on EC2
+# Deployment and local container notes
 
-This guide will help you deploy both the backend and ML ADR service on an EC2 instance using Docker.
+## Before deploying
 
-## Prerequisites
+This repository is a student project and has not been security-audited or clinically validated. Do not deploy it with real patient data or rely on its ADR output for clinical decisions.
 
-1. AWS EC2 instance (Ubuntu 20.04 LTS or later recommended)
-2. SSH access to the EC2 instance
-3. Security groups configured to allow ports 22, 5001, 6001, and 27017
+The checked-in Render blueprint is a starting configuration, not proof that the application is currently deployed or production-ready. Review every service, environment variable, access policy, and database setting in the hosting dashboard before deploying.
 
-## Steps to Deploy
+## Local Docker Compose
 
-### 1. Connect to your EC2 instance
+The root Compose file starts the Node backend, MongoDB, and the experimental Flask ADR service.
 
-```bash
-ssh -i /path/to/your-key.pem ubuntu@your-ec2-public-ip
-```
+1. Install Docker Engine and the Docker Compose plugin.
+2. Copy the root environment template:
 
-### 2. Update system packages
+   ```bash
+   cp .env.example .env
+   ```
 
-```bash
-sudo apt update && sudo apt upgrade -y
-```
+3. Generate two different random secrets and set `ACCESS_TOKEN_SECRET` and `REFRESH_TOKEN_SECRET` in `.env`.
+4. Start the services:
 
-### 3. Install Docker
+   ```bash
+   docker compose up --build -d
+   docker compose ps
+   docker compose logs -f backend
+   ```
 
-```bash
-# Install Docker
-sudo apt install docker.io -y
+5. The backend listens on `http://127.0.0.1:5001`. MongoDB and the ML prototype are reachable only inside the Compose network; neither is published on a host port.
 
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Add current user to docker group
-sudo usermod -aG docker $USER
-
-# Reboot to apply changes
-sudo reboot
-```
-
-After reboot, reconnect to your instance.
-
-### 4. Clone the repository
+Stop the stack:
 
 ```bash
-git clone https://github.com/Bharath18sv/Clinical-Assistant.git
-cd Clinical-Assistant
+docker compose down
 ```
 
-If you don't have git installed:
+The database is stored in the named `mongodb_data` volume. Removing it with `docker compose down -v` permanently deletes that local database.
 
-```bash
-sudo apt install git -y
-```
+## Hosted deployment checklist
 
-### 5. Set up environment variables
+Before exposing any service publicly:
 
-Create a `.env` file in the backend directory:
+- Store all secrets in the host's secret manager; never commit them.
+- Use unique, high-entropy access-token, refresh-token, and reminder-link secrets.
+- Use a managed MongoDB deployment with authentication, TLS, network restrictions, backups, and least-privilege database credentials.
+- Do not expose MongoDB to the public internet.
+- Configure the exact frontend origin in `CORS_ORIGIN`.
+- Terminate HTTPS at a trusted reverse proxy or hosting platform.
+- Configure email, SMS, WhatsApp, and Cloudinary credentials only if those integrations are enabled.
+- Restrict access to the Flask ADR prototype. It uses synthetic training data and is not a clinically validated model.
+- Review authentication and authorization for every route before handling sensitive data.
+- Add monitoring, backup restoration tests, dependency updates, and incident-response procedures.
 
-```bash
-cd backend
-vi .env
-```
+## Required backend environment
 
-Add your environment variables:
+See `backend/.env.example` for the complete variable template. The core settings are:
 
-```
-MONGO_URI=mongodb://localhost:27017/SCA
-PORT=5001
-NODE_ENV=production
-# Add other required environment variables
-```
-
-### 6. Build and run services using Docker Compose
-
-```bash
-# Navigate to the root directory
-cd ..
-
-# Build and start all services
-docker-compose up -d --build
-```
-
-### 7. Check service status
-
-```bash
-# Check if all containers are running
-docker-compose ps
-
-# View logs for a specific service
-docker-compose logs backend
-docker-compose logs ml-adr-service
-docker-compose logs mongodb
-```
-
-### 8. Test the services
-
-```bash
-# Test backend health
-curl http://localhost:5001/
-
-# Test ML ADR service health
-curl http://localhost:6001/health
-```
+- `PORT`
+- `MONGODB_URI`
+- `ACCESS_TOKEN_SECRET`
+- `REFRESH_TOKEN_SECRET`
+- `ACCESS_TOKEN_EXPIRY`
+- `REFRESH_TOKEN_EXPIRY`
+- `JWT_SECRET`
+- `CORS_ORIGIN`
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Port conflicts**: Make sure ports 5001, 6001, and 27017 are not being used by other services.
-
-2. **Permission denied errors**: Ensure your user is in the docker group.
-
-3. **MongoDB connection issues**: Check if MongoDB is running and accessible.
-
-4. **Environment variables**: Make sure all required environment variables are set.
-
-### Useful Docker Commands
-
-```bash
-# Stop all services
-docker-compose down
-
-# Restart services
-docker-compose restart
-
-# View logs
-docker-compose logs -f
-
-# Execute commands in a running container
-docker-compose exec backend bash
-docker-compose exec ml-adr-service bash
-```
-
-## Security Considerations
-
-1. **Firewall**: Configure AWS Security Groups to only allow necessary ports.
-2. **Environment Variables**: Never commit sensitive data to version control.
-3. **HTTPS**: Consider using a reverse proxy like Nginx with SSL termination.
-4. **Database Security**: Use strong authentication for MongoDB.
-
-## Monitoring
-
-For production deployment, consider setting up:
-
-1. **Log aggregation**: Use tools like ELK stack or AWS CloudWatch.
-2. **Health checks**: Implement monitoring for service availability.
-3. **Resource monitoring**: Monitor CPU, memory, and disk usage.
-4. **Backup strategy**: Regular backups of MongoDB data.
-
-## Updating the Application
-
-To update the application:
-
-```bash
-# Pull latest changes
-git pull origin main
-
-# Rebuild and restart services
-docker-compose down
-docker-compose up -d --build
-```
+- **Backend cannot connect to MongoDB:** verify `MONGODB_URI` and that the database is reachable from the backend's network.
+- **CORS errors:** make sure `CORS_ORIGIN` exactly matches the browser origin, including scheme and port.
+- **Authentication errors:** verify that access-token and refresh-token secrets are set consistently across backend instances.
+- **Docker port conflicts:** check whether port 5001 is already in use on the host.
+- **Notification failures:** confirm the relevant provider credentials and enablement settings; these integrations are optional.
