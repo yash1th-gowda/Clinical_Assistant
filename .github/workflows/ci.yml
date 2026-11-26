@@ -29,6 +29,11 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm test
+      - name: Summarize dependency advisories
+        run: |
+          npm audit --json > audit-report.json || true
+          node -e "const report = require('./audit-report.json'); const items = Object.entries(report.vulnerabilities || {}); console.log(items.map(([name, item]) => name + ': ' + item.severity + ' (fix: ' + JSON.stringify(item.fixAvailable) + ')').join('\\n') || 'No dependency advisories found')"
+          rm -f audit-report.json
 
   ml-service:
     name: Python syntax check
