@@ -1,35 +1,35 @@
-# Node modules
+# Dependencies
 node_modules/
 
-# Environment variables
+# Environment variables and secrets
 .env
-.env.*     # If you use multiple env files like .env.development
+.env.*
+!.env.example
+cookies.txt
+*.pem
+*.key
 
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS files
+# OS / editor
 .DS_Store
 Thumbs.db
-
-# Build / Output
-dist/
-build/
-coverage/
-
-# Temporary and cache files
-.tmp
-.temp
-.cache
-
-# IDE / Editor folders
 .vscode/
 .idea/
 *.swp
 
-# Docker
+# Build / output / coverage
+dist/
+build/
+coverage/
+.tmp/
+.temp/
+.cache/
+
+# Docker overrides
 docker-compose.override.yml
