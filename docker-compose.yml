@@ -1,41 +1,47 @@
-version: "3.9"
-
 services:
   backend:
-    build: ./backend
-    container_name: smartcare-backend
-    ports:
-      - "5001:5001"
+    build:
+      context: ./backend
     environment:
-      - NODE_ENV=production
-      - MONGO_URI=mongodb://mongodb:27017/SCA
-      - PORT=5001
+      NODE_ENV: production
+      PORT: 5001
+      MONGODB_URI: mongodb://mongodb:27017/smart-care-assistant
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:?Set ACCESS_TOKEN_SECRET in the root .env file}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:?Set REFRESH_TOKEN_SECRET in the root .env file}
+      ACCESS_TOKEN_EXPIRY: ${ACCESS_TOKEN_EXPIRY:-15m}
+      REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+    ports:
+      - "127.0.0.1:5001:5001"
     depends_on:
-      - mongodb
-    restart: always
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - smartcare-network
 
   mongodb:
-    image: mongo:6
-    container_name: smartcare-mongodb
+    image: mongo:7
     volumes:
       - mongodb_data:/data/db
-    ports:
-      - "27017:27017"
-    restart: always
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
     networks:
       - smartcare-network
 
   ml-adr-service:
-    build: ./ml-adr-service
-    container_name: smartcare-ml-adr
-    ports:
-      - "6001:6001"
+    build:
+      context: ./ml-adr-service
+    expose:
+      - "6001"
     environment:
-      - FLASK_ENV=production
-      - PORT=6001
-    restart: always
+      PORT: 6001
+      FLASK_DEBUG: "false"
+    restart: unless-stopped
     networks:
       - smartcare-network
 
