@@ -257,4 +257,8 @@ def predict_adr():
         return jsonify({"error": "ADR prediction failed"}), 500
 
 if __name__ == '__main__':
-    app.run(\n        host='0.0.0.0',\n        port=int(os.environ.get('PORT', '6001')),\n        debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'\n    )
+    app.run(
+        host='0.0.0.0',
+        port=int(os.environ.get('PORT', '6001')),
+        debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    )
