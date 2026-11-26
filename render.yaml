@@ -53,7 +53,7 @@ services:
     autoDeploy: false
 
   # ML ADR Service
-  - type: web
+  - type: pserv
     name: smartcare-ml-adr-service
     runtime: docker
     plan: standard
@@ -62,6 +62,8 @@ services:
     envVars:
       - key: FLASK_ENV
         value: production
+      - key: FLASK_DEBUG
+        value: "false"
       - key: PORT
         value: 6001
     healthCheckPath: /health
