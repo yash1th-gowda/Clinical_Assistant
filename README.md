@@ -119,19 +119,28 @@ npm run medication-logs
 
 Do not run multiple scheduler instances against the same environment unless duplicate processing has been addressed.
 
+### Run backend tests
+
+```bash
+cd backend
+npm test
+```
+
+The test suite currently includes focused authorization middleware tests. GitHub Actions also checks backend tests and Python syntax on pushes and pull requests.
+
 ## Docker Compose
 
 For a local containerized backend and database:
 
 1. Copy the root `.env.example` to `.env`.
-2. Replace both required token secrets with independently generated values.
+2. Replace all three required secrets with independently generated values.
 3. Run:
 
 ```bash
 docker compose up --build
 ```
 
-The backend is published on `127.0.0.1:5001`. MongoDB is not published to the host; it is reachable only by services on the Compose network. The ML service is also internal to that network.
+The backend is published on `127.0.0.1:5001`. For a frontend running on the host, set `NEXT_PUBLIC_API_URL=http://localhost:5001/api`. MongoDB is not published to the host; it is reachable only by services on the Compose network. The ML service is also internal to that network.
 
 To stop:
 
